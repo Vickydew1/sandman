@@ -1,4 +1,4 @@
-﻿#Requires -RunAsAdministrator
+#Requires -RunAsAdministrator
 <#
 .SYNOPSIS
     Sandman installer for Windows.
@@ -26,7 +26,7 @@ function Test-CommandExists {
 }
 
 # Checks for a dependency and prints its status
-function Check-Dependency {
+function Test-Dependency {
     param(
         [string]$Command,
         [string]$Label
@@ -61,9 +61,9 @@ function Add-ToPath {
     }
 }
 
-# Refreshes the process's PATH environment variable from the machine and user stores.
-function Refresh-Path {
-    Write-Info "Refreshing PATH environment variable for this session..."
+# Updates the process's PATH environment variable from the machine and user stores.
+function Update-Path {
+    Write-Info "Updating PATH environment variable for this session..."
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::Machine) + ";" + [System.Environment]::GetEnvironmentVariable("Path", [System.EnvironmentVariableTarget]::User)
 }
 

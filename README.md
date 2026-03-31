@@ -302,7 +302,7 @@ sandman scan all \
 | Flag | Default | Description |
 |---|---|---|
 | `--severity` | `HIGH,CRITICAL` | Comma-separated severity filter: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
-| `--format` | `table` | Output format: `table`, `json`, `sarif`. DAST also accepts `html` and `xml` |
+| `--format` | `json` | Output format: `json`, `table`, `sarif`. DAST also accepts `html` and `xml` |
 | `--output` | _(stdout)_ | Write results to a file instead of stdout |
 
 ### scan dast flags
