@@ -271,7 +271,7 @@ function Install-Sandman {
     $installDir = "C:\ProgramData\Sandman\bin"
     New-Item -Path $installDir -ItemType Directory -Force | Out-Null
 
-    $url = "https://github.com/th3-v3ng34nc3/sandman/releases/download/v0.0.1/sandman_windows_amd64.zip"
+    $url = "https://github.com/th3-v3ng34nc3/sandman/releases/download/v0.0.1/sandman_0.0.1_windows_amd64.zip"
     $zipPath = Join-Path $env:TEMP "sandman.zip"
     $extractPath = Join-Path $env:TEMP "sandman_extract_$([guid]::NewGuid())"
 
