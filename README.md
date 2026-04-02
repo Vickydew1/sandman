@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="sandman.png" alt="Sandman" width="800"/>
+  <img src="sandman.png" alt="Sandman" width="850"/>
 </p>
 
 # 🌙 Sandman
