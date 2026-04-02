@@ -12,8 +12,8 @@ var Version = "dev"
 
 var rootCmd = &cobra.Command{
 	Use:   "sandman",
-	Short: "Sandman: A multi-purpose security scanner (Trivy & Opengrep)",
-	Long:  `A unified security tool for scanning container images (vulnerabilities) and source code (SAST) across Linux, Windows, and K8s.`,
+	Short: "Sandman: Security scanner powered by Trivy, Opengrep, ZAP, and ClamAV",
+	Long:  `Sandman is a unified security scanner that wraps Trivy, Opengrep, OWASP ZAP, and ClamAV into a single CLI. It supports container image scanning, secrets detection, SAST, IaC misconfiguration checks, OS/package vulnerability scanning, malware detection, and DAST against live targets.`,
 }
 
 var versionCmd = &cobra.Command{

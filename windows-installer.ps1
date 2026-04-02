@@ -10,13 +10,24 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Check execution policy and guide user if needed
+$policy = Get-ExecutionPolicy -Scope CurrentUser
+if ($policy -eq 'Restricted' -or $policy -eq 'AllSigned') {
+    Write-Host "`n  [!] Script execution is blocked by PowerShell policy ($policy)." -ForegroundColor Red
+    Write-Host "  To fix, run one of these in an Admin PowerShell:`n" -ForegroundColor Yellow
+    Write-Host "      Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Cyan
+    Write-Host "`n  Or run this script directly with bypass (no permanent change):" -ForegroundColor Yellow
+    Write-Host "      powershell -ExecutionPolicy Bypass -File .\windows-installer.ps1`n" -ForegroundColor Cyan
+    exit 1
+}
+
 #region Helper Functions
 
 # Simple color-coded output functions
-function Write-Ok { param([string]$Message) Write-Host "  `u{2714}  $Message" -ForegroundColor Green }
-function Write-Warn { param([string]$Message) Write-Host "  `u{26A0}  $Message" -ForegroundColor Yellow }
-function Write-Info { param([string]$Message) Write-Host "  `u{2192}  $Message" -ForegroundColor Cyan }
-function Write-Err { param([string]$Message) Write-Host "  `u{2716}  $Message" -ForegroundColor Red }
+function Write-Ok { param([string]$Message) Write-Host "  [OK]  $Message" -ForegroundColor Green }
+function Write-Warn { param([string]$Message) Write-Host "  [!!]  $Message" -ForegroundColor Yellow }
+function Write-Info { param([string]$Message) Write-Host "  [>>]  $Message" -ForegroundColor Cyan }
+function Write-Err { param([string]$Message) Write-Host "  [XX]  $Message" -ForegroundColor Red }
 function Write-Header { param([string]$Message) Write-Host "`n$Message`n" -ForegroundColor Cyan -BackgroundColor DarkBlue }
 
 # Checks if a command is available in the PATH
@@ -260,7 +271,7 @@ function Install-Sandman {
     $installDir = "C:\ProgramData\Sandman\bin"
     New-Item -Path $installDir -ItemType Directory -Force | Out-Null
 
-    $url = "https://github.com/th3-v3ng34nc3/sandman/releases/latest/download/sandman_windows_amd64.zip"
+    $url = "https://github.com/th3-v3ng34nc3/sandman/releases/download/v0.0.1/sandman_windows_amd64.zip"
     $zipPath = Join-Path $env:TEMP "sandman.zip"
     $extractPath = Join-Path $env:TEMP "sandman_extract_$([guid]::NewGuid())"
 
@@ -286,26 +297,26 @@ function Install-Sandman {
 function Show-Menu {
     Clear-Host
     Write-Host @"
-`n
-  ┌────────────────────────────────────────────────────┐
-  │           🌙  Sandman — Dependency Setup           │
-  └────────────────────────────────────────────────────┘
-`n
+
+  +----------------------------------------------------+
+  |          [Sandman]  Dependency Setup               |
+  +----------------------------------------------------+
+
   What do you want to scan?
 
-  1) Container images                →  trivy
-  2) Source code for secrets         →  trivy
-  3) Source code (SAST)              →  opengrep
-  4) Infrastructure as Code (IaC)    →  trivy
-  5) OS / package vulnerabilities    →  trivy
-  6) Files for malware / viruses     →  clamav
-  7) Live web applications (DAST)    →  zap + python + java
-  8) All underlying scan engines     →  all engines
-  9) Sandman CLI                     →  sandman binary
-  10) Everything                     →  sandman + all engines
+  1) Container images                ->  trivy
+  2) Source code for secrets         ->  trivy
+  3) Source code (SAST)              ->  opengrep
+  4) Infrastructure as Code (IaC)    ->  trivy
+  5) OS / package vulnerabilities    ->  trivy
+  6) Files for malware / viruses     ->  clamav
+  7) Live web applications (DAST)    ->  zap + python + java
+  8) All underlying scan engines     ->  all engines
+  9) Sandman CLI                     ->  sandman binary
+  10) Everything                     ->  sandman + all engines
 
   0) Exit
-`n
+
 "@
     $choice = Read-Host "  Your choice [0-10]"
     return $choice
