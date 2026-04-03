@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -15,9 +15,59 @@ var (
 	output   string
 )
 
+const divider = "──────────────────────────────────────────────────────────"
+
 var scanCmd = &cobra.Command{
 	Use:   "scan",
 	Short: "Security scanning operations",
+}
+
+// ------------------------------------------------------------
+// Verbose helpers
+// ------------------------------------------------------------
+
+func printScanHeader(scanType, target, reportPath string) {
+	fmt.Println()
+	fmt.Println(divider)
+	fmt.Printf("🌙 Sandman — %s\n", scanType)
+	fmt.Printf("   Target   : %s\n", target)
+	fmt.Printf("   Severity : %s\n", severity)
+	fmt.Printf("   Report   : %s\n", reportPath)
+	fmt.Println(divider)
+	fmt.Println()
+}
+
+func printScanDone(scanType, reportPath string) {
+	fmt.Println()
+	fmt.Println(divider)
+	fmt.Printf("✅ Sandman %s complete\n", scanType)
+	fmt.Printf("   Report saved → %s\n", reportPath)
+	fmt.Println(divider)
+}
+
+func printScanFailed(scanType string, err error) {
+	fmt.Println()
+	fmt.Println(divider)
+	fmt.Printf("❌ Sandman %s failed: %v\n", scanType, err)
+	fmt.Println(divider)
+}
+
+// resolveReport returns the output path for a scan.
+// If --output is set, it uses that. Otherwise it auto-generates a timestamped filename.
+func resolveReport(scanType, ts string) string {
+	if output != "" {
+		return output
+	}
+	return fmt.Sprintf("sandman-%s-%s.json", scanType, ts)
+}
+
+// resolveMalwareReport returns the log path for a ClamAV scan.
+// ClamAV does not support JSON output natively, so the report is a .log file.
+func resolveMalwareReport(ts string) string {
+	if output != "" {
+		return output
+	}
+	return fmt.Sprintf("sandman-malware-%s.log", ts)
 }
 
 // ------------------------------------------------------------
@@ -29,12 +79,13 @@ var scanImageCmd = &cobra.Command{
 	Short: "Scan a container image for vulnerabilities",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("trivy", buildTrivyImageArgs(args[0]), "🌙 Sandman is inspecting image")
-		if err != nil {
-			fmt.Printf("❌ Sandman image scan failed: %v\n", err)
+		report := resolveReport("image", time.Now().Format("20060102-150405"))
+		printScanHeader("Image Scan", args[0], report)
+		if err := runTool("trivy", buildTrivyImageArgs(args[0], report)); err != nil {
+			printScanFailed("image scan", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Sandman image scan complete.")
+		printScanDone("image scan", report)
 	},
 }
 
@@ -47,12 +98,13 @@ var scanSecretsCmd = &cobra.Command{
 	Short: "Scan a directory for hardcoded secrets and tokens",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("trivy", buildTrivySecretsArgs(args[0]), "🌙 Sandman is hunting for secrets")
-		if err != nil {
-			fmt.Printf("❌ Sandman secrets scan failed: %v\n", err)
+		report := resolveReport("secrets", time.Now().Format("20060102-150405"))
+		printScanHeader("Secrets Scan", args[0], report)
+		if err := runTool("trivy", buildTrivySecretsArgs(args[0], report)); err != nil {
+			printScanFailed("secrets scan", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Sandman secrets scan complete.")
+		printScanDone("secrets scan", report)
 	},
 }
 
@@ -65,12 +117,13 @@ var scanCodeCmd = &cobra.Command{
 	Short: "Scan source code for security flaws",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("opengrep", buildOpengrepArgs(args[0]), "🌙 Sandman is auditing code")
-		if err != nil {
-			fmt.Printf("❌ Sandman code scan failed: %v\n", err)
+		report := resolveReport("code", time.Now().Format("20060102-150405"))
+		printScanHeader("Code Scan (SAST)", args[0], report)
+		if err := runTool("opengrep", buildOpengrepArgs(args[0], report)); err != nil {
+			printScanFailed("code scan", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Sandman code scan complete.")
+		printScanDone("code scan", report)
 	},
 }
 
@@ -84,12 +137,69 @@ var scanIaCCmd = &cobra.Command{
 	Long:  "Scans Terraform, CloudFormation, Kubernetes manifests, Helm charts, and Dockerfiles for security misconfigurations using Trivy.",
 	Args:  cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("trivy", buildTrivyIaCArgs(args[0]), "🌙 Sandman is reviewing IaC")
-		if err != nil {
-			fmt.Printf("❌ Sandman IaC scan failed: %v\n", err)
+		report := resolveReport("iac", time.Now().Format("20060102-150405"))
+		printScanHeader("IaC Scan", args[0], report)
+		if err := runTool("trivy", buildTrivyIaCArgs(args[0], report)); err != nil {
+			printScanFailed("IaC scan", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Sandman IaC scan complete.")
+		printScanDone("IaC scan", report)
+	},
+}
+
+// ------------------------------------------------------------
+// scan vuln
+// ------------------------------------------------------------
+
+var scanVulnCmd = &cobra.Command{
+	Use:   "vuln [path]",
+	Short: "Scan a filesystem for OS and package vulnerabilities",
+	Long:  "Scans installed OS packages and language runtime dependencies for known CVEs on Linux and Windows using Trivy.",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		report := resolveReport("vuln", time.Now().Format("20060102-150405"))
+		printScanHeader("Vulnerability Scan", args[0], report)
+		if err := runTool("trivy", buildTrivyVulnArgs(args[0], report)); err != nil {
+			printScanFailed("vulnerability scan", err)
+			os.Exit(1)
+		}
+		printScanDone("vulnerability scan", report)
+	},
+}
+
+// ------------------------------------------------------------
+// scan malware
+// ------------------------------------------------------------
+
+var scanMalwareCmd = &cobra.Command{
+	Use:   "malware [path]",
+	Short: "Scan a directory for malware using ClamAV",
+	Long: `Recursively scans a directory for malware, viruses, and trojans using ClamAV.
+
+ClamAV exit codes:
+  0  No threats found
+  1  Threats detected (scan completed — review the report)
+  2  An error occurred
+
+Note: ClamAV does not support JSON output natively. The report is saved as a .log file.`,
+	Args: cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		report := resolveMalwareReport(time.Now().Format("20060102-150405"))
+		printScanHeader("Malware Scan", args[0], report)
+		found, err := runMalwareScan(buildClamAVArgs(args[0], report))
+		if err != nil {
+			printScanFailed("malware scan", err)
+			os.Exit(2)
+		}
+		if found {
+			fmt.Println()
+			fmt.Println(divider)
+			fmt.Println("⚠️  Sandman malware scan complete — threats detected!")
+			fmt.Printf("   Report saved → %s\n", report)
+			fmt.Println(divider)
+			os.Exit(1)
+		}
+		printScanDone("malware scan", report)
 	},
 }
 
@@ -115,57 +225,14 @@ Output format for --output:
 	Run: func(cmd *cobra.Command, args []string) {
 		full, _ := cmd.Flags().GetBool("full")
 		apiSpec, _ := cmd.Flags().GetString("api-spec")
-
-		binary, zapArgs := buildZapArgs(args[0], full, apiSpec)
-		err := runTool(binary, zapArgs, "🌙 Sandman is probing the target")
-		if err != nil {
-			fmt.Printf("❌ Sandman DAST scan failed: %v\n", err)
+		report := resolveReport("dast", time.Now().Format("20060102-150405"))
+		binary, zapArgs := buildZapArgs(args[0], full, apiSpec, report)
+		printScanHeader("DAST Scan", args[0], report)
+		if err := runTool(binary, zapArgs); err != nil {
+			printScanFailed("DAST scan", err)
 			os.Exit(1)
 		}
-		fmt.Println("✅ Sandman DAST scan complete.")
-	},
-}
-
-// ------------------------------------------------------------
-// scan vuln
-// ------------------------------------------------------------
-
-var scanVulnCmd = &cobra.Command{
-	Use:   "vuln [path]",
-	Short: "Scan a filesystem for OS and package vulnerabilities",
-	Long:  "Scans installed OS packages and language runtime dependencies for known CVEs on Linux and Windows using Trivy.",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("trivy", buildTrivyVulnArgs(args[0]), "🌙 Sandman is scanning for vulnerabilities")
-		if err != nil {
-			fmt.Printf("❌ Sandman vulnerability scan failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("✅ Sandman vulnerability scan complete.")
-	},
-}
-
-// ------------------------------------------------------------
-// scan malware
-// ------------------------------------------------------------
-
-var scanMalwareCmd = &cobra.Command{
-	Use:   "malware [path]",
-	Short: "Scan a directory for malware using ClamAV",
-	Long: `Recursively scans a directory for malware, viruses, and trojans using ClamAV.
-
-ClamAV exit codes:
-  0  No threats found
-  1  Threats detected (scan completes successfully)
-  2  An error occurred`,
-	Args: cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		err := runTool("clamscan", buildClamAVArgs(args[0]), "🌙 Sandman is scanning for malware")
-		if err != nil {
-			fmt.Printf("❌ Sandman malware scan failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Println("✅ Sandman malware scan complete.")
+		printScanDone("DAST scan", report)
 	},
 }
 
@@ -173,15 +240,21 @@ ClamAV exit codes:
 // scan all
 // ------------------------------------------------------------
 
+type scanResult struct {
+	label  string
+	status string // "pass", "findings", "failed"
+	report string
+}
+
 var scanAllCmd = &cobra.Command{
 	Use:   "all",
 	Short: "Run all scans in sequence",
-	Long: `Run every scan type in sequence and report combined results.
+	Long: `Run every scan type in sequence. Reports are auto-saved per scan type.
 
 Flags:
   --image     Container image   → image scan
   --path      Filesystem path   → secrets, code, IaC, vuln, and malware scans
-  --target    Live URL          → DAST baseline scan (add --full for active)`,
+  --target    Live URL          → DAST scan (add --full for active)`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		image, _ := cmd.Flags().GetString("image")
 		path, _ := cmd.Flags().GetString("path")
@@ -192,64 +265,151 @@ Flags:
 			return fmt.Errorf("provide at least one of --image, --path, or --target")
 		}
 
-		var failed []string
-
-		if image != "" {
-			fmt.Println("\n─── Container Image Scan ───────────────────────────────")
-			if err := runTool("trivy", buildTrivyImageArgs(image), "🌙 Sandman is inspecting image"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "image")
-			}
-		}
-
-		if path != "" {
-			fmt.Println("\n─── Secrets Scan ───────────────────────────────────────")
-			if err := runTool("trivy", buildTrivySecretsArgs(path), "🌙 Sandman is hunting for secrets"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "secrets")
-			}
-
-			fmt.Println("\n─── Code Scan ──────────────────────────────────────────")
-			if err := runTool("opengrep", buildOpengrepArgs(path), "🌙 Sandman is auditing code"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "code")
-			}
-
-			fmt.Println("\n─── IaC Scan ───────────────────────────────────────────")
-			if err := runTool("trivy", buildTrivyIaCArgs(path), "🌙 Sandman is reviewing IaC"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "iac")
-			}
-
-			fmt.Println("\n─── Vulnerability Scan ─────────────────────────────────")
-			if err := runTool("trivy", buildTrivyVulnArgs(path), "🌙 Sandman is scanning for vulnerabilities"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "vuln")
-			}
-
-			fmt.Println("\n─── Malware Scan ───────────────────────────────────────")
-			if err := runTool("clamscan", buildClamAVArgs(path), "🌙 Sandman is scanning for malware"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "malware")
-			}
-		}
-
-		if target != "" {
-			fmt.Println("\n─── DAST Scan ──────────────────────────────────────────")
-			binary, zapArgs := buildZapArgs(target, full, "")
-			if err := runTool(binary, zapArgs, "🌙 Sandman is probing the target"); err != nil {
-				fmt.Printf("⚠️  %v\n", err)
-				failed = append(failed, "dast")
-			}
-		}
+		// Shared timestamp so all reports from this run share the same suffix
+		ts := time.Now().Format("20060102-150405")
+		var results []scanResult
 
 		fmt.Println()
-		if len(failed) > 0 {
-			fmt.Printf("⚠️  Scans with findings or failures: %s\n", strings.Join(failed, ", "))
-			os.Exit(1)
+		fmt.Println("══════════════════════════════════════════════════════════")
+		fmt.Printf("🌙 Sandman — Full Security Scan  [%s]\n", ts)
+		if image != "" {
+			fmt.Printf("   Image    : %s\n", image)
+		}
+		if path != "" {
+			fmt.Printf("   Path     : %s\n", path)
+		}
+		if target != "" {
+			fmt.Printf("   Target   : %s\n", target)
+		}
+		fmt.Println("══════════════════════════════════════════════════════════")
+
+		// ── Image ────────────────────────────────────────────────────
+		if image != "" {
+			r := fmt.Sprintf("sandman-image-%s.json", ts)
+			printScanHeader("Image Scan", image, r)
+			if err := runTool("trivy", buildTrivyImageArgs(image, r)); err != nil {
+				printScanFailed("image scan", err)
+				results = append(results, scanResult{"image", "failed", r})
+			} else {
+				printScanDone("image scan", r)
+				results = append(results, scanResult{"image", "pass", r})
+			}
 		}
 
-		fmt.Println("✅ All scans complete. No issues found.")
+		// ── Filesystem scans ─────────────────────────────────────────
+		if path != "" {
+			type fsJob struct {
+				label   string
+				scanKey string
+				args    []string
+				isMal   bool
+			}
+
+			rSecrets := fmt.Sprintf("sandman-secrets-%s.json", ts)
+			rCode := fmt.Sprintf("sandman-code-%s.json", ts)
+			rIaC := fmt.Sprintf("sandman-iac-%s.json", ts)
+			rVuln := fmt.Sprintf("sandman-vuln-%s.json", ts)
+			rMal := fmt.Sprintf("sandman-malware-%s.log", ts)
+
+			// Secrets
+			printScanHeader("Secrets Scan", path, rSecrets)
+			if err := runTool("trivy", buildTrivySecretsArgs(path, rSecrets)); err != nil {
+				printScanFailed("secrets scan", err)
+				results = append(results, scanResult{"secrets", "failed", rSecrets})
+			} else {
+				printScanDone("secrets scan", rSecrets)
+				results = append(results, scanResult{"secrets", "pass", rSecrets})
+			}
+
+			// Code
+			printScanHeader("Code Scan (SAST)", path, rCode)
+			if err := runTool("opengrep", buildOpengrepArgs(path, rCode)); err != nil {
+				printScanFailed("code scan", err)
+				results = append(results, scanResult{"code", "failed", rCode})
+			} else {
+				printScanDone("code scan", rCode)
+				results = append(results, scanResult{"code", "pass", rCode})
+			}
+
+			// IaC
+			printScanHeader("IaC Scan", path, rIaC)
+			if err := runTool("trivy", buildTrivyIaCArgs(path, rIaC)); err != nil {
+				printScanFailed("IaC scan", err)
+				results = append(results, scanResult{"iac", "failed", rIaC})
+			} else {
+				printScanDone("IaC scan", rIaC)
+				results = append(results, scanResult{"iac", "pass", rIaC})
+			}
+
+			// Vuln
+			printScanHeader("Vulnerability Scan", path, rVuln)
+			if err := runTool("trivy", buildTrivyVulnArgs(path, rVuln)); err != nil {
+				printScanFailed("vulnerability scan", err)
+				results = append(results, scanResult{"vuln", "failed", rVuln})
+			} else {
+				printScanDone("vulnerability scan", rVuln)
+				results = append(results, scanResult{"vuln", "pass", rVuln})
+			}
+
+			// Malware
+			printScanHeader("Malware Scan", path, rMal)
+			found, err := runMalwareScan(buildClamAVArgs(path, rMal))
+			if err != nil {
+				printScanFailed("malware scan", err)
+				results = append(results, scanResult{"malware", "failed", rMal})
+			} else if found {
+				fmt.Println()
+				fmt.Println(divider)
+				fmt.Println("⚠️  Sandman malware scan complete — threats detected!")
+				fmt.Printf("   Report saved → %s\n", rMal)
+				fmt.Println(divider)
+				results = append(results, scanResult{"malware", "findings", rMal})
+			} else {
+				printScanDone("malware scan", rMal)
+				results = append(results, scanResult{"malware", "pass", rMal})
+			}
+		}
+
+		// ── DAST ─────────────────────────────────────────────────────
+		if target != "" {
+			r := fmt.Sprintf("sandman-dast-%s.json", ts)
+			binary, zapArgs := buildZapArgs(target, full, "", r)
+			printScanHeader("DAST Scan", target, r)
+			if err := runTool(binary, zapArgs); err != nil {
+				printScanFailed("DAST scan", err)
+				results = append(results, scanResult{"dast", "failed", r})
+			} else {
+				printScanDone("DAST scan", r)
+				results = append(results, scanResult{"dast", "pass", r})
+			}
+		}
+
+		// ── Summary ───────────────────────────────────────────────────
+		fmt.Println()
+		fmt.Println("══════════════════════════════════════════════════════════")
+		fmt.Println("🌙 Sandman — Scan Summary")
+		fmt.Println("──────────────────────────────────────────────────────────")
+		anyFailed := false
+		for _, r := range results {
+			var icon string
+			switch r.status {
+			case "pass":
+				icon = "✅"
+			case "findings":
+				icon = "⚠️ "
+				anyFailed = true
+			case "failed":
+				icon = "❌"
+				anyFailed = true
+			}
+			fmt.Printf("   %-10s %s  %s\n", r.label, icon, r.report)
+		}
+		fmt.Println("══════════════════════════════════════════════════════════")
+		fmt.Println()
+
+		if anyFailed {
+			os.Exit(1)
+		}
 		return nil
 	},
 }
@@ -258,40 +418,23 @@ Flags:
 // Argument builders
 // ------------------------------------------------------------
 
-func buildTrivyImageArgs(target string) []string {
-	args := []string{"image", "--severity", severity}
-	if format != "table" {
-		args = append(args, "--format", format)
-	}
-	if output != "" {
-		args = append(args, "--output", output)
-	}
-	return append(args, target)
+func buildTrivyImageArgs(target, reportPath string) []string {
+	return []string{"image", "--severity", severity, "--format", format, "--output", reportPath, target}
 }
 
-func buildTrivySecretsArgs(path string) []string {
-	args := []string{"fs", "--scanners", "secret", "--severity", severity}
-	if format != "table" {
-		args = append(args, "--format", format)
-	}
-	if output != "" {
-		args = append(args, "--output", output)
-	}
-	return append(args, path)
+func buildTrivySecretsArgs(path, reportPath string) []string {
+	return []string{"fs", "--scanners", "secret", "--severity", severity, "--format", format, "--output", reportPath, path}
 }
 
-func buildTrivyIaCArgs(path string) []string {
-	args := []string{"config", "--severity", severity}
-	if format != "table" {
-		args = append(args, "--format", format)
-	}
-	if output != "" {
-		args = append(args, "--output", output)
-	}
-	return append(args, path)
+func buildTrivyIaCArgs(path, reportPath string) []string {
+	return []string{"config", "--severity", severity, "--format", format, "--output", reportPath, path}
 }
 
-func buildOpengrepArgs(path string) []string {
+func buildTrivyVulnArgs(path, reportPath string) []string {
+	return []string{"fs", "--scanners", "vuln", "--severity", severity, "--format", format, "--output", reportPath, path}
+}
+
+func buildOpengrepArgs(path, reportPath string) []string {
 	args := []string{"scan", "--config", "p/default"}
 	switch format {
 	case "json":
@@ -299,36 +442,18 @@ func buildOpengrepArgs(path string) []string {
 	case "sarif":
 		args = append(args, "--sarif")
 	}
-	if output != "" {
-		args = append(args, "--output", output)
-	}
-	return append(args, path)
-}
-
-func buildTrivyVulnArgs(path string) []string {
-	args := []string{"fs", "--scanners", "vuln", "--severity", severity}
-	if format != "table" {
-		args = append(args, "--format", format)
-	}
-	if output != "" {
-		args = append(args, "--output", output)
-	}
-	return append(args, path)
+	return append(args, "--output", reportPath, path)
 }
 
 // buildClamAVArgs constructs clamscan arguments.
-// ClamAV uses --log for file output; JSON is not natively supported so format is ignored.
-func buildClamAVArgs(path string) []string {
-	args := []string{"--recursive", "--infected"}
-	if output != "" {
-		args = append(args, "--log="+output)
-	}
-	return append(args, path)
+// ClamAV uses --log for file output; JSON output is not supported natively.
+func buildClamAVArgs(path, reportPath string) []string {
+	return []string{"--recursive", "--infected", "--log=" + reportPath, path}
 }
 
 // buildZapArgs selects the correct ZAP script and constructs its arguments.
 // ZAP uses -J (json), -r (html), -x (xml) for output rather than --format/--output.
-func buildZapArgs(target string, full bool, apiSpec string) (string, []string) {
+func buildZapArgs(target string, full bool, apiSpec, reportPath string) (string, []string) {
 	var binary string
 	switch {
 	case apiSpec != "":
@@ -345,40 +470,55 @@ func buildZapArgs(target string, full bool, apiSpec string) (string, []string) {
 		args = append(args, "-f", "openapi", "-S", apiSpec)
 	}
 
-	if output != "" {
-		switch format {
-		case "json":
-			args = append(args, "-J", output)
-		case "xml":
-			args = append(args, "-x", output)
-		default:
-			// html is ZAP's richest report format
-			args = append(args, "-r", output)
-		}
+	switch format {
+	case "json":
+		args = append(args, "-J", reportPath)
+	case "xml":
+		args = append(args, "-x", reportPath)
+	default:
+		args = append(args, "-r", reportPath)
 	}
 
 	return binary, args
 }
 
 // ------------------------------------------------------------
-// Tool runner
+// Tool runners
 // ------------------------------------------------------------
 
-func runTool(binary string, args []string, message string) error {
-	fmt.Printf("%s: %s...\n", message, args[len(args)-1])
-
+func runTool(binary string, args []string) error {
 	if _, err := exec.LookPath(binary); err != nil {
 		return fmt.Errorf("%s is not installed or not in PATH", binary)
 	}
-
 	cmd := exec.Command(binary, args...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%s exited with: %w", binary, err)
 	}
 	return nil
+}
+
+// runMalwareScan handles ClamAV's exit codes:
+//
+//	0 = no threats (clean)
+//	1 = threats detected (scan succeeded — findings reported)
+//	2 = scan error
+func runMalwareScan(args []string) (bool, error) {
+	if _, err := exec.LookPath("clamscan"); err != nil {
+		return false, fmt.Errorf("clamscan is not installed or not in PATH")
+	}
+	cmd := exec.Command("clamscan", args...)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	if err == nil {
+		return false, nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+	return false, fmt.Errorf("clamscan exited with: %w", err)
 }
 
 // ------------------------------------------------------------
@@ -386,20 +526,17 @@ func runTool(binary string, args []string, message string) error {
 // ------------------------------------------------------------
 
 func init() {
-	// Persistent flags inherited by all scan subcommands
 	scanCmd.PersistentFlags().StringVar(&severity, "severity", "HIGH,CRITICAL", "Severity levels to report (e.g. HIGH,CRITICAL,MEDIUM)")
 	scanCmd.PersistentFlags().StringVar(&format, "format", "json", "Output format: json, table, sarif (html/xml for DAST)")
-	scanCmd.PersistentFlags().StringVar(&output, "output", "", "Write results to this file path")
+	scanCmd.PersistentFlags().StringVar(&output, "output", "", "Override report file path (default: auto-generated per scan type)")
 
-	// scan dast flags
 	scanDastCmd.Flags().Bool("full", false, "Run a full active scan instead of the passive baseline scan")
 	scanDastCmd.Flags().String("api-spec", "", "OpenAPI/Swagger spec URL or file path for API scanning")
 
-	// scan all flags
 	scanAllCmd.Flags().String("image", "", "Container image to scan (e.g. nginx:latest)")
-	scanAllCmd.Flags().String("path", "", "Filesystem path for secrets, code, and IaC scans")
+	scanAllCmd.Flags().String("path", "", "Filesystem path for secrets, code, IaC, vuln, and malware scans")
 	scanAllCmd.Flags().String("target", "", "Live URL for DAST scan (e.g. https://example.com)")
-	scanAllCmd.Flags().Bool("full", false, "Use full active ZAP scan instead of baseline (applies to DAST in scan all)")
+	scanAllCmd.Flags().Bool("full", false, "Use full active ZAP scan instead of baseline")
 
 	scanCmd.AddCommand(scanImageCmd)
 	scanCmd.AddCommand(scanSecretsCmd)

@@ -18,9 +18,9 @@ builds:
 nfpms:
   - file_name_template: "sandman_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     formats: [deb, rpm]
-    vendor: "SecurityOps"
-    homepage: "https://github.com/rajvanshi/sandman"
-    maintainer: "Maintainer <admin@example.com>"
+    vendor: "th3-v3ng34nc3"
+    homepage: "https://github.com/th3-v3ng34nc3/sandman"
+    maintainer: "th3-v3ng34nc3 <https://github.com/th3-v3ng34nc3>"
     description: "Unified security scanner wrapping Trivy, Opengrep, and OWASP ZAP"
 
 archives:
